@@ -1,3 +1,4 @@
+package Windows;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
@@ -19,6 +20,7 @@ public class JavaHTTPServer implements Runnable {
 	private Socket connect;
 	
 	public JavaHTTPServer(Socket c) {
+		//called from server's main method so it has to be as short as possible
 		connect = c;
 	}
 	
