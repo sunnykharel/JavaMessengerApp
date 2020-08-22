@@ -8,36 +8,38 @@ import java.util.*;
 import java.util.stream.*;
 
 public class ChatServer {
-	static final int PORT = 8080;
+	static final int PORT = 8080; //The default connection port on the server
+	
 	/**
-	 * if there is no chat subject, make sure to re-make the subject (in the case that all users log off
+	 * TODO: if there is no chat subject, make sure to re-make the subject (in the case that all users log off
 	 * and want to log back on)
 	 */
 	private static Map<String, ChatSubject> chatIDtoChatSubjectMap = Collections.synchronizedMap(new HashMap<String, ChatSubject>());
+	
 	/**
 	 * Map of currently logged-in users to their respective ClientWriterObservers
 	 * added to on login, removed on log-off
 	 */
-    private static Map<String, ClientWriterObserver> usernameToWriters = Collections.synchronizedMap(new HashMap<String, ClientWriterObserver>());
-    static final boolean verbose= true;
-    private static final String chatsDirectory = "C:\\Users\\sunny\\Desktop\\chats";
-    private static final String usersDirectory = "C:\\Users\\sunny\\Desktop\\users";
+	private static Map<String, ClientWriterObserver> usernameToWriters = Collections.synchronizedMap(new HashMap<String, ClientWriterObserver>());
+	static final boolean verbose= true;
+	private static final String chatsDirectory = "C:\\Users\\sunny\\Desktop\\chats";
+	private static final String usersDirectory = "C:\\Users\\sunny\\Desktop\\users";
 
-
-    
 	public static void main(String[] args) {
 		System.out.println("The chat server is running...");
 		try {
-			//Once the ServerSocket accomplished its listening task 
-			//and detected an incoming connection,
-			//it will accept() it and create a new Socket instance to facilitate the communication.
+			/*
+			Once the ServerSocket accomplished its listening task 
+			and detected an incoming connection,
+			it will accept() it and create a new Socket instance to facilitate the communication.
+			*/
 			ServerSocket serverSocket = new ServerSocket(PORT);		
 			System.out.println("Server started");
 			System.out.println("Listening for connections on port: "+PORT);
 			System.out.println("...");
 			
 			while(true) {
-				Thread t = new Thread(new UserHandler(serverSocket.accept()));
+				Thread t = new Thread(new UserHandler(serverSocket.accept())); //accept new users and create new threads for them as they come
 				t.start();
 			}
 		} catch (IOException e) {
@@ -56,35 +58,41 @@ public class ChatServer {
         private ChatSubject chat2 ;
    	
     	public UserHandler(Socket socket) {
-    		chat1 = null;
+    	    chat1 = null;
             chat2 = null;
             this.socket = socket;
             LOGGED_OFF=false;
             if(verbose)
-				System.out.println("Connection opened. ("+new Date()+")");
+		System.out.println("Connection opened. ("+new Date()+")");
         }  
     	
 		@Override
 		public void run() {
-			LOGGED_OFF=false;
+			//Set up reader and writer for socket connection
 			try {
 				in = new BufferedReader( new InputStreamReader(socket.getInputStream()));
-	            out = new ClientWriterObserver(socket.getOutputStream(), null);            
+	            		out = new ClientWriterObserver(socket.getOutputStream(), null);            
 			} catch (IOException e) {
 				System.err.println("Server connection error :"+e.getMessage());
 			}			
-            //wait for them to login or signup in order to register them	
+            		
+			/*
+			Run application logic as long as user not logged off	
+			*/
+			LOGGED_OFF=false;
 			while(!LOGGED_OFF) {
 				//get first line of the request from the client
 				String input;
 				try {
 					while( (input = in.readLine()) != null) {
 						System.out.println(input);
-						//we parse the request with a string tokenizer
+						/*
+						We parse the request with a string tokenizer, according to our custom protocol
+						*/
 						StringTokenizer parse = new StringTokenizer(input);
-						String method = parse.nextToken().toUpperCase(); //we get the HTTP method of the client
-						//we get file requested
-						String actionRequested = parse.nextToken();
+						String method = parse.nextToken().toUpperCase(); //the action requested, either POST, GET, DELETE, BROADCAST
+						String actionRequested = parse.nextToken(); //we get file requested
+						
 						
 						if(method.equals("POST")) {
 							System.out.println("Post req reached");
@@ -99,14 +107,12 @@ public class ChatServer {
 							handleGetRequest(actionRequested, requestContents);
 						} else if(method.equals("DELETE")) {
 							handleDeleteRequest(actionRequested);
-						}	else if(method.equals("BROADCAST")) {
+						} else if(method.equals("BROADCAST")) {
 							handleBroadCastRequest(input);
 						}
 					}
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					//remove user from currently logged-in users
-					usernameToWriters.remove(out.username);
+				} catch (IOException e) {				
+					usernameToWriters.remove(out.username); //remove user from currently logged-in users
 					if(chat1!=null) {
 						chat1.deleteClientWriterObserver(out);
 					} if(chat2!=null) {
@@ -120,14 +126,19 @@ public class ChatServer {
 		}	
 		
 		private void handleBroadCastRequest(String input) {
+			//Functionality for handling broadcast messages (messages to each member in the chat app)
 			for(ClientWriterObserver o : usernameToWriters.values()) {
 				o.println(input);
 				o.flush();
 			}
 		}
 
-		
+		/*
+		Handles the pseudo-POST requests of our custom protocol
+		*/
 		private void handlePostRequest(String actionRequested, String requestContents){
+			
+			
 			String[] splitRequestContents = requestContents.split("_");
 			if(actionRequested.equals("addUser")) {
 				//need to add user to the user files
@@ -146,6 +157,9 @@ public class ChatServer {
 			}
 		}
 		
+	        /*
+		*Helper function to take care of sending a message given an input
+		*/
 		private void handleSendMessageRequest(String input) {
 			//POST sendMessage chatName message
 			StringTokenizer parse = new StringTokenizer(input);
@@ -157,10 +171,13 @@ public class ChatServer {
 			while(parse.hasMoreTokens()) {
 				message+= " "+parse.nextToken();
 			}
-			chatIDtoChatSubjectMap.get(chatName).notifyAllExcept(out.username,"newMessage "+
-																chatName+" "+ message);	
+			chatIDtoChatSubjectMap.get(chatName).notifyAllExcept(out.username,"newMessage "+chatName+" "+ message);	
 		}
 		
+	        /**
+		*Helper function to create a chat given the required request contents in the format:
+		*chatName_username1_username2_..._usernameN
+		*/
 		private void handleCreateChatRequest(String requestContents) {
 			String[] splitRequestContents = requestContents.split("_");
 			String chatName = splitRequestContents[0];
@@ -188,6 +205,9 @@ public class ChatServer {
 
 		}
 		
+	        /**
+		*Helper function to add users given their username and password
+		*/
 		private boolean addUser(String username, String password) {
 			if(checkFileExistsInDirectory(usersDirectory, username+".txt")) {
 				return false;
@@ -209,7 +229,11 @@ public class ChatServer {
 				return true;
 			}
 		}
-		
+	
+	    
+	    /**
+	     *Handler method to take care of the pseudo-GET requests of our communication protocol
+	     */
 		private void handleGetRequest(String actionRequested, String requestContents) {
 			String[] splitRequestContents = requestContents.split("_");
 			if(actionRequested.equals("login")){
@@ -222,7 +246,10 @@ public class ChatServer {
 				handleChatContentsRequest(username, chatName);
 			}
 		}
-		/**
+	    
+	    
+		
+	       /**
 		 * sends user the whole file first then adds him to the observable list of chatName
 		 * @param username
 		 * @param chatName
@@ -245,7 +272,9 @@ public class ChatServer {
 				chatSubj.addClientWriterObserver(out);
 			}
 		}
-		/*
+
+	    
+	        /*
 		 * potential bug: user enters chat and immediately leaves it
 		 * somehow have to make the user unable to enter any chat until this 
 		 * one fully loads
@@ -304,11 +333,16 @@ public class ChatServer {
 			out.flush();
 		}
 		
-		private void handleDeleteRequest(String actionRequested) {
-			
-		}
+    private void handleDeleteRequest(String actionRequested) {
+
+    }
+	    
     }
     
+	
+//Helper functions to access/manipulate files in file system
+	
+	
     private static String getAllChatIDs(String username) {
     	try {
 	    	File file = new File(usersDirectory+"\\"+username+".txt");
